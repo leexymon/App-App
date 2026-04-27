@@ -1,0 +1,15 @@
+
+<h2>Edit Student</h2>
+<a href="/students">View Students</a>
+<form action="/update/{{ student[0] }}" method="POST">
+    Name:
+    <input type="text" name="name" value="{{ student[1] }}">
+    <br>
+    Age:
+    <input type="number" name="age" value="{{ student[2] }}">
+    <br>
+    Course:
+    <input type="text" name="course" value="{{ student[3] }}">
+    <br>
+    <input type="submit" value="Update Student">
+</form>

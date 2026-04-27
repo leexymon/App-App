@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cine3D | AI Movie Recommendations</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #ff3e00;
+            --secondary: #00e5ff;
+            --bg: #050505;
+            --glass: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: var(--bg);
+            font-family: 'Outfit', sans-serif;
+            color: white;
+        }
+
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* UI Overlay */
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            padding: 40px;
+            box-sizing: border-box;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: auto;
+        }
+
+        .logo {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .search-container {
+            position: relative;
+            width: 400px;
+        }
+
+        #search-input {
+            width: 100%;
+            padding: 15px 25px;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 30px;
+            color: white;
+            font-family: inherit;
+            font-size: 1rem;
+            backdrop-filter: blur(10px);
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        #search-input:focus {
+            border-color: var(--secondary);
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.2);
+        }
+
+        .search-results {
+            position: absolute;
+            top: 60px;
+            width: 100%;
+            background: rgba(10, 10, 10, 0.95);
+            border-radius: 15px;
+            overflow: hidden;
+            max-height: 0;
+            transition: max-height 0.3s ease;
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+        }
+
+        .search-results.active {
+            max-height: 400px;
+            padding: 10px 0;
+        }
+
+        .result-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .result-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--secondary);
+        }
+
+        /* Movie Detail Panel */
+        .detail-panel {
+            position: fixed;
+            right: -500px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 400px;
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(30px);
+            border-left: 1px solid var(--glass-border);
+            height: 80vh;
+            z-index: 100;
+            padding: 40px;
+            transition: right 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: auto;
+            border-radius: 30px 0 0 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .detail-panel.active {
+            right: 0;
+        }
+
+        .detail-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            line-height: 1;
+            margin: 0;
+        }
+
+        .detail-meta {
+            display: flex;
+            gap: 10px;
+            font-size: 0.8rem;
+            color: var(--secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .detail-desc {
+            font-size: 1rem;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.7);
+            margin-top: 20px;
+        }
+
+        .recommend-title {
+            margin-top: 30px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 10px;
+        }
+
+        .recommend-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            overflow-y: auto;
+        }
+
+        .rec-item {
+            background: var(--glass);
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .rec-item:hover {
+            border-color: var(--primary);
+            background: rgba(255, 62, 0, 0.1);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            cursor: pointer;
+            opacity: 0.5;
+            transition: opacity 0.3s;
+        }
+
+        .close-btn:hover {
+            opacity: 1;
+        }
+
+        /* Movie Card (Internal 3D elements will be sprites or planes) */
+        .loading-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 1s;
+        }
+
+        .loader {
+            width: 50px;
+            height: 50px;
+            border: 3px solid var(--glass-border);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.4);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="loading-screen" id="loader">
+        <div class="loader"></div>
+        <p style="margin-top: 20px; letter-spacing: 2px; font-size: 0.7rem;">CALIBRATING 3D SPACE...</p>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div class="ui-overlay">
+        <div class="header">
+            <div class="logo">CINE<span style="font-weight: 300;">3D</span></div>
+            <div class="search-container">
+                <input type="text" id="search-input" placeholder="Search a movie you like..." autocomplete="off">
+                <div class="search-results" id="search-results"></div>
+            </div>
+        </div>
+        <div class="instructions">Scroll to explore • Drag to rotate • Click to select</div>
+    </div>
+
+    <div class="detail-panel" id="detail-panel">
+        <div class="close-btn" onclick="closePanel()">✕ CLOSE</div>
+        <div id="detail-content">
+            <!-- Dynamic Content -->
+            <h1 class="detail-title">Interstellar</h1>
+            <div class="detail-meta">
+                <span>2014</span> • <span>Sci-Fi / Drama</span> • <span>★ 8.6</span>
+            </div>
+            <p class="detail-desc">The adventures of a group of explorers who make use of a newly discovered wormhole to surpass the limitations on human space travel.</p>
+            
+            <div class="recommend-title">SIMILAR MOVIES</div>
+            <div class="recommend-list" id="recommendations">
+                <!-- Recommendations -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- THREE.JS ENGINE ---
+        let scene, camera, renderer, starGeo, stars;
+        let movieGroup = new THREE.Group();
+        let raycaster = new THREE.Raycaster();
+        let mouse = new THREE.Vector2();
+        let moviesData = [];
+        let movieMeshes = [];
+        let isTransitioning = false;
+        let selectedMovie = null;
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.z = 800;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Stars Background
+            starGeo = new THREE.BufferGeometry();
+            let positions = [];
+            for(let i=0; i<6000; i++) {
+                positions.push(Math.random() * 2000 - 1000);
+                positions.push(Math.random() * 2000 - 1000);
+                positions.push(Math.random() * 2000 - 1000);
+            }
+            starGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            let starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.7, transparent: true });
+            stars = new THREE.Points(starGeo, starMaterial);
+            scene.add(stars);
+
+            scene.add(movieGroup);
+
+            // Fetch Movies
+            fetch('/api/movies')
+                .then(res => res.json())
+                .then(data => {
+                    moviesData = data;
+                    createMovieGallery(data);
+                    setTimeout(() => {
+                        document.getElementById('loader').style.opacity = '0';
+                        setTimeout(() => document.getElementById('loader').remove(), 1000);
+                    }, 1000);
+                });
+
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('click', onMouseClick, false);
+            document.addEventListener('wheel', onWheel, false);
+        }
+
+        function createMovieGallery(movies) {
+            // Clear existing
+            while(movieGroup.children.length > 0){ 
+                movieGroup.remove(movieGroup.children[0]); 
+            }
+            movieMeshes = [];
+
+            const radius = 600;
+            movies.forEach((movie, i) => {
+                const theta = i * 0.4;
+                const y = -(i * 20) + 300;
+                
+                // Create Movie Card Plane
+                const geometry = new THREE.PlaneGeometry(120, 180);
+                
+                // Canvas for Poster Simulation
+                const canvas = document.createElement('canvas');
+                canvas.width = 256; canvas.height = 384;
+                const ctx = canvas.getContext('2d');
+                
+                // Gradient Background
+                const grad = ctx.createLinearGradient(0,0,0,384);
+                grad.addColorStop(0, '#1a1a1a');
+                grad.addColorStop(1, '#000000');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0,0,256,384);
+                
+                // Text
+                ctx.fillStyle = '#00e5ff';
+                ctx.font = 'bold 24px Outfit';
+                const words = movie.title.split(' ');
+                let line = '';
+                let yPos = 50;
+                words.forEach(word => {
+                    if ((line + word).length > 15) {
+                        ctx.fillText(line, 20, yPos);
+                        line = word + ' ';
+                        yPos += 30;
+                    } else {
+                        line += word + ' ';
+                    }
+                });
+                ctx.fillText(line, 20, yPos);
+
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.font = '14px Outfit';
+                ctx.fillText(movie.genres.split(' ')[0] || 'Movie', 20, 340);
+                ctx.fillStyle = '#ff3e00';
+                ctx.fillText('★ ' + movie.vote_average, 20, 360);
+
+                const texture = new THREE.CanvasTexture(canvas);
+                const material = new THREE.MeshBasicMaterial({ 
+                    map: texture, 
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.9
+                });
+
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(
+                    radius * Math.cos(theta),
+                    y,
+                    radius * Math.sin(theta)
+                );
+                mesh.lookAt(0, y, 0);
+                mesh.userData = movie;
+                
+                movieGroup.add(mesh);
+                movieMeshes.push(mesh);
+            });
+        }
+
+        function onWheel(event) {
+            if (isTransitioning) return;
+            movieGroup.position.y += event.deltaY * 0.5;
+            stars.position.y += event.deltaY * 0.1;
+        }
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        function onMouseClick() {
+            if (isTransitioning) return;
+            
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(movieMeshes);
+
+            if (intersects.length > 0) {
+                selectMovie(intersects[0].object);
+            }
+        }
+
+        function selectMovie(mesh) {
+            isTransitioning = true;
+            selectedMovie = mesh.userData;
+
+            // Camera Fly-to transition
+            const targetPos = new THREE.Vector3();
+            mesh.getWorldPosition(targetPos);
+            
+            // Offset for camera view
+            const cameraTarget = targetPos.clone().add(mesh.getWorldDirection(new THREE.Vector3()).multiplyScalar(300));
+            
+            gsap.to(camera.position, {
+                x: cameraTarget.x,
+                y: cameraTarget.y,
+                z: cameraTarget.z,
+                duration: 1.5,
+                ease: "power3.inOut",
+                onUpdate: () => {
+                    camera.lookAt(targetPos);
+                },
+                onComplete: () => {
+                    showDetails(selectedMovie);
+                    isTransitioning = false;
+                }
+            });
+
+            // Fade others
+            movieMeshes.forEach(m => {
+                if (m !== mesh) {
+                    gsap.to(m.material, { opacity: 0.1, duration: 1 });
+                } else {
+                    gsap.to(m.material, { opacity: 1, duration: 0.5 });
+                }
+            });
+        }
+
+        function showDetails(movie) {
+            const panel = document.getElementById('detail-panel');
+            const content = document.getElementById('detail-content');
+            
+            content.innerHTML = `
+                <h1 class="detail-title">${movie.title}</h1>
+                <div class="detail-meta">
+                    <span>${movie.release_date ? movie.release_date.split('-')[0] : 'N/A'}</span> • 
+                    <span>${movie.genres.replace(/ /g, ' / ')}</span> • 
+                    <span>★ ${movie.vote_average}</span>
+                </div>
+                <p class="detail-desc">${movie.overview}</p>
+                <div class="recommend-title">BECAUSE YOU LIKED THIS</div>
+                <div class="recommend-list" id="recommendations">
+                    <p style="font-size: 0.7rem; color: #666;">Analyzing patterns...</p>
+                </div>
+            `;
+            
+            panel.classList.add('active');
+
+            // Fetch recommendations
+            fetch(`/api/recommend/${movie.id || movie.index}`)
+                .then(res => res.json())
+                .then(recs => {
+                    const recList = document.getElementById('recommendations');
+                    recList.innerHTML = '';
+                    recs.forEach(rec => {
+                        const div = document.createElement('div');
+                        div.className = 'rec-item';
+                        div.innerHTML = `<strong>${rec.title}</strong><br><span style="color: #666; font-size: 0.7rem;">${rec.genres.split(' ')[0]}</span>`;
+                        div.onclick = (e) => {
+                            e.stopPropagation();
+                            closePanel();
+                            // Find mesh if exists or just reload gallery
+                            const targetMesh = movieMeshes.find(m => m.userData.title === rec.title);
+                            if (targetMesh) selectMovie(targetMesh);
+                            else {
+                                // Reload with new context? 
+                                // For now just search simulation
+                                console.log("Jumping to", rec.title);
+                            }
+                        };
+                        recList.appendChild(div);
+                    });
+                });
+        }
+
+        function closePanel() {
+            document.getElementById('detail-panel').classList.remove('active');
+            gsap.to(camera.position, { x: 0, y: 0, z: 800, duration: 1.5, ease: "power2.inOut" });
+            movieMeshes.forEach(m => gsap.to(m.material, { opacity: 0.9, duration: 1 }));
+        }
+
+        // Search Logic
+        const searchInput = document.getElementById('search-input');
+        const searchResults = document.getElementById('search-results');
+
+        searchInput.addEventListener('input', (e) => {
+            const q = e.target.value;
+            if (q.length < 2) {
+                searchResults.classList.remove('active');
+                return;
+            }
+
+            fetch(`/api/search?q=${encodeURIComponent(q)}`)
+                .then(res => res.json())
+                .then(data => {
+                    searchResults.innerHTML = '';
+                    if (data.length > 0) {
+                        searchResults.classList.add('active');
+                        data.forEach(movie => {
+                            const div = document.createElement('div');
+                            div.className = 'result-item';
+                            div.textContent = movie.title;
+                            div.onclick = () => {
+                                searchResults.classList.remove('active');
+                                const mesh = movieMeshes.find(m => m.userData.title === movie.title);
+                                if (mesh) selectMovie(mesh);
+                            };
+                            searchResults.appendChild(div);
+                        });
+                    } else {
+                        searchResults.classList.remove('active');
+                    }
+                });
+        });
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Subtle float effect
+            if (!isTransitioning) {
+                movieGroup.rotation.y += 0.002;
+                stars.rotation.y += 0.0005;
+                
+                movieMeshes.forEach((m, i) => {
+                    m.position.y += Math.sin(Date.now() * 0.001 + i) * 0.1;
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
